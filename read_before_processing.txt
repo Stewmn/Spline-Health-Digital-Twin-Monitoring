@@ -1,0 +1,7 @@
+ip for personal 127.0.0.1
+8765 rate
+first connect the esp32 with the imu sensor 
+run an i2c scanner to check the rate
+then run the python bridge 
+which getss the bend and roll values from the arudino via the imu sensor
+next go to the html wbpage server link and put ip and baud rate and click connect 

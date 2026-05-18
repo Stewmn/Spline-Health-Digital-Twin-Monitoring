@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SpineGuard IoT — Posture Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@200;400;600;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #020b12;
+    --panel:     #04141f;
+    --border:    #0a3a52;
+    --xray-bg:   #03111c;
+    --bone:      #c8e8f8;
+    --bone-dim:  #4a7a99;
+    --bone-glow: #7fd4f8;
+    --ok:        #00e5a0;
+    --warn:      #f5c518;
+    --danger:    #ff3c3c;
+    --accent:    #1bc8f5;
+    --text:      #a8d8f0;
+    --text-dim:  #3a6a88;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-main: 'Exo 2', sans-serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-main);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 3px,
+      rgba(0,0,0,0.18) 3px, rgba(0,0,0,0.18) 4px
+    );
+    pointer-events:none; z-index:999;
+  }
+  body::after {
+    content:'';
+    position:fixed; inset:0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.7) 100%);
+    pointer-events:none; z-index:998;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #021422 0%, #031d2e 100%);
+    position: sticky; top:0; z-index:100;
+  }
+  .logo { display:flex; align-items:center; gap:14px; }
+  .logo-icon { width:38px; height:38px; }
+  .logo h1 {
+    font-size:1.3rem; font-weight:800; letter-spacing:0.15em;
+    color:#fff; text-transform:uppercase;
+  }
+  .logo span {
+    display:block; font-size:0.6rem; font-weight:200; letter-spacing:0.35em;
+    color: var(--accent); text-transform:uppercase; margin-top:2px;
+  }
+  .header-right { display:flex; align-items:center; gap:24px; }
+  .live-badge {
+    display:flex; align-items:center; gap:8px;
+    font-family: var(--font-mono); font-size:0.75rem;
+    text-transform:uppercase; letter-spacing:0.1em;
+    transition: color 0.4s;
+  }
+  .live-dot {
+    width:8px; height:8px; border-radius:50%;
+    transition: background 0.4s;
+  }
+  .live-dot.connected    { background: var(--ok);   animation: pulse-ok   1.2s ease-in-out infinite; }
+  .live-dot.disconnected { background: var(--danger); animation: pulse-err 1.0s ease-in-out infinite; }
+  .live-dot.connecting   { background: var(--warn);  animation: pulse-ok   0.8s ease-in-out infinite; }
+  @keyframes pulse-ok  { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,160,0.6);}  50%{box-shadow:0 0 0 6px rgba(0,229,160,0);} }
+  @keyframes pulse-err { 0%,100%{box-shadow:0 0 0 0 rgba(255,60,60,0.6);}  50%{box-shadow:0 0 0 6px rgba(255,60,60,0);} }
+  .timestamp { font-family: var(--font-mono); font-size:0.72rem; color: var(--text-dim); }
+
+  /* ── MAIN GRID ── */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 380px 1fr;
+    min-height: calc(100vh - 65px);
+  }
+
+  /* ── LEFT PANEL ── */
+  .left-panel {
+    padding: 28px 24px;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 20px;
+  }
+
+  /* ── CENTER PANEL ── */
+  .center-panel {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 28px 16px;
+    background: var(--xray-bg);
+    border-right: 1px solid var(--border);
+  }
+  .xray-label {
+    font-family: var(--font-mono); font-size:0.65rem; letter-spacing:0.25em;
+    color: var(--text-dim); text-transform:uppercase; margin-bottom:12px;
+    display:flex; align-items:center; gap:8px; width:100%; max-width:340px;
+  }
+  .xray-label::before, .xray-label::after { content:''; flex:1; height:1px; background: var(--border); }
+  .xray-frame {
+    position:relative; width:100%; max-width:340px; aspect-ratio: 0.55;
+    background: radial-gradient(ellipse at 50% 30%, #051a2a 0%, #020b12 100%);
+    border: 1px solid var(--border); border-radius: 4px; overflow:hidden;
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.8), 0 0 30px rgba(27,200,245,0.05);
+  }
+  .xray-frame::before { content:'L'; position:absolute; top:10px; left:12px; font-family: var(--font-mono); font-size:0.9rem; color: rgba(200,232,248,0.3); z-index:10; }
+  .xray-frame::after  { content:'R'; position:absolute; top:10px; right:12px; font-family: var(--font-mono); font-size:0.9rem; color: rgba(200,232,248,0.3); z-index:10; }
+  #spine-svg { width:100%; height:100%; }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    margin-top:16px; width:100%; max-width:340px;
+    padding:12px 16px; background: var(--panel);
+    border: 1px solid var(--border); border-radius:4px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+  }
+  .status-label { font-family: var(--font-mono); font-size:0.65rem; color: var(--text-dim); letter-spacing:0.15em; text-transform:uppercase; }
+  .status-value { font-family: var(--font-mono); font-size:1.1rem; font-weight:700; transition: color 0.3s; }
+
+  /* ── RIGHT PANEL ── */
+  .right-panel { padding: 28px 24px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 4px; padding: 18px; position:relative; overflow:hidden;
+  }
+  .card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+  .card-title {
+    font-size:0.6rem; letter-spacing:0.3em; text-transform:uppercase;
+    color: var(--text-dim); font-family: var(--font-mono); margin-bottom:14px;
+  }
+
+  /* ── METER BAR ── */
+  .meter-item { margin-bottom:14px; }
+  .meter-item:last-child { margin-bottom:0; }
+  .meter-head { display:flex; justify-content:space-between; margin-bottom:5px; }
+  .meter-name { font-family: var(--font-mono); font-size:0.68rem; color: var(--text); letter-spacing:0.08em; }
+  .meter-num  { font-family: var(--font-mono); font-size:0.68rem; color: var(--accent); }
+  .meter-track { height:6px; background: #071d2d; border-radius:3px; overflow:hidden; border: 1px solid var(--border); }
+  .meter-fill  { height:100%; border-radius:3px; transition: width 0.35s ease, background 0.35s ease; }
+
+  /* ── HISTORY CHART ── */
+  #history-canvas { width:100%; height:90px; display:block; }
+
+  /* ── ALERT BOX ── */
+  .alert-box {
+    border-radius:4px; padding:14px 16px;
+    border-left: 3px solid var(--ok);
+    background: rgba(0,229,160,0.05);
+    transition: all 0.4s; display:flex; align-items:center; gap:12px;
+  }
+  .alert-icon { font-size:1.4rem; line-height:1; }
+  .alert-title { font-size:0.75rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; transition: color 0.4s; }
+  .alert-desc  { font-size:0.65rem; color: var(--text-dim); margin-top:3px; font-family: var(--font-mono); }
+
+  /* ── INFO GRID ── */
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .info-cell { background: #020e18; border:1px solid var(--border); border-radius:3px; padding:10px 12px; }
+  .info-cell-label { font-family: var(--font-mono); font-size:0.55rem; color: var(--text-dim); letter-spacing:0.15em; text-transform:uppercase; margin-bottom:4px; }
+  .info-cell-val   { font-family: var(--font-mono); font-size:0.85rem; color: var(--bone); }
+
+  /* ── LEGEND ── */
+  .legend { display:flex; flex-direction:column; gap:8px; }
+  .legend-item { display:flex; align-items:center; gap:10px; font-family: var(--font-mono); font-size:0.65rem; color: var(--text); }
+  .legend-dot  { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+  /* ── WS CONFIG PANEL ── */
+  .ws-panel {
+    background: rgba(27,200,245,0.04);
+    border: 1px solid rgba(27,200,245,0.2);
+    border-radius:4px; padding:16px;
+  }
+  .ws-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .ws-row:last-child { margin-bottom:0; }
+  .ws-row label { font-family: var(--font-mono); font-size:0.62rem; color: var(--text-dim); width:56px; flex-shrink:0; }
+  .ws-input {
+    flex:1; background:#020e18; border:1px solid var(--border); border-radius:3px;
+    padding:6px 10px; font-family: var(--font-mono); font-size:0.72rem; color: var(--bone);
+    outline:none; transition: border-color 0.2s;
+  }
+  .ws-input:focus { border-color: var(--accent); }
+  .ws-btn {
+    padding:7px 16px; border-radius:3px; border:none; cursor:pointer;
+    font-family: var(--font-mono); font-size:0.68rem; letter-spacing:0.08em;
+    transition: all 0.2s;
+  }
+  .ws-btn.connect    { background: var(--accent); color: #020b12; }
+  .ws-btn.connect:hover { background:#43d9fc; }
+  .ws-btn.disconnect { background: var(--danger); color: #fff; }
+  .ws-btn.disconnect:hover { background:#ff6060; }
+  .ws-log {
+    background:#020e18; border:1px solid var(--border); border-radius:3px;
+    padding:8px 10px; font-family: var(--font-mono); font-size:0.6rem;
+    color: var(--text-dim); height:56px; overflow-y:auto; line-height:1.6;
+  }
+
+  /* ── SIM PANEL ── */
+  .sim-panel {
+    background: rgba(90,90,90,0.06);
+    border: 1px dashed rgba(90,90,90,0.3);
+    border-radius:4px; padding:14px;
+  }
+  .sim-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .sim-row:last-child { margin-bottom:0; }
+  .sim-row label { font-family: var(--font-mono); font-size:0.62rem; color: var(--text-dim); width:80px; flex-shrink:0; }
+  .sim-row input[type=range] { flex:1; accent-color: var(--accent); height:3px; }
+  .sim-val { font-family: var(--font-mono); font-size:0.68rem; color: var(--accent); width:42px; text-align:right; }
+
+  /* ── FOOTER ── */
+  footer {
+    padding:12px 32px; border-top:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:center;
+    font-family: var(--font-mono); font-size:0.6rem; color: var(--text-dim);
+    background: #021422;
+  }
+
+  @media (max-width:900px) {
+    .main { grid-template-columns:1fr; }
+    .left-panel,.center-panel,.right-panel { border:none; border-bottom:1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header>
+  <div class="logo">
+    <svg class="logo-icon" viewBox="0 0 38 38" fill="none">
+      <rect x="15" y="2"  width="8" height="5" rx="1.5" fill="#1bc8f5" opacity="0.9"/>
+      <rect x="15" y="9"  width="8" height="5" rx="1.5" fill="#1bc8f5" opacity="0.8"/>
+      <rect x="15" y="16" width="8" height="5" rx="1.5" fill="#1bc8f5" opacity="0.7"/>
+      <rect x="15" y="23" width="8" height="5" rx="1.5" fill="#1bc8f5" opacity="0.6"/>
+      <rect x="15" y="30" width="8" height="5" rx="1.5" fill="#1bc8f5" opacity="0.5"/>
+      <line x1="19" y1="2" x2="19" y2="35" stroke="#1bc8f5" stroke-width="1" opacity="0.3"/>
+      <circle cx="19" cy="4.5" r="1.5" fill="#00e5a0"/>
+    </svg>
+    <div>
+      <h1>SpineGuard <span style="color:var(--accent)">IoT</span>
+        <span>Spinal Posture Monitoring System — ESP32 + MPU6050</span>
+      </h1>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge" id="conn-badge">
+      <div class="live-dot disconnected" id="conn-dot"></div>
+      <span id="conn-text">Disconnected</span>
+    </div>
+    <div class="timestamp" id="clock">--:--:--</div>
+  </div>
+</header>
+
+<!-- ═══════════ MAIN ═══════════ -->
+<div class="main">
+
+  <!-- ── LEFT PANEL ── -->
+  <div class="left-panel">
+
+    <!-- Alert -->
+    <div class="alert-box" id="alert-box">
+      <div class="alert-icon" id="alert-icon">✅</div>
+      <div>
+        <div class="alert-title" id="alert-title">Posture Normal</div>
+        <div class="alert-desc"  id="alert-desc">All angles within safe range. Keep it up!</div>
+      </div>
+    </div>
+
+    <!-- Angle meters -->
+    <div class="card">
+      <div class="card-title">▸ Angle Deviation</div>
+      <div class="meter-item">
+        <div class="meter-head">
+          <span class="meter-name">Pitch — Forward / Back Bend</span>
+          <span class="meter-num" id="pitch-num">0.0°</span>
+        </div>
+        <div class="meter-track"><div class="meter-fill" id="pitch-bar" style="width:0%;background:var(--ok)"></div></div>
+      </div>
+      <div class="meter-item">
+        <div class="meter-head">
+          <span class="meter-name">Roll — Left / Right Lean</span>
+          <span class="meter-num" id="roll-num">0.0°</span>
+        </div>
+        <div class="meter-track"><div class="meter-fill" id="roll-bar" style="width:0%;background:var(--ok)"></div></div>
+      </div>
+      <div class="meter-item">
+        <div class="meter-head">
+          <span class="meter-name">Total Bend Magnitude</span>
+          <span class="meter-num" id="total-num">0.0°</span>
+        </div>
+        <div class="meter-track"><div class="meter-fill" id="total-bar" style="width:0%;background:var(--ok)"></div></div>
+      </div>
+    </div>
+
+    <!-- Session info -->
+    <div class="card">
+      <div class="card-title">▸ Session Info</div>
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-cell-label">Max Bend</div><div class="info-cell-val" id="max-bend">0.0°</div></div>
+        <div class="info-cell"><div class="info-cell-label">Avg Bend</div><div class="info-cell-val" id="avg-bend">0.0°</div></div>
+        <div class="info-cell"><div class="info-cell-label">Warnings</div><div class="info-cell-val" id="warn-count">0</div></div>
+        <div class="info-cell"><div class="info-cell-label">Session Time</div><div class="info-cell-val" id="session-time">00:00</div></div>
+      </div>
+    </div>
+
+    <!-- Risk legend -->
+    <div class="card">
+      <div class="card-title">▸ Risk Zones</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--ok)"></div>0°–20° &nbsp; Safe — Normal posture range</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div>20°–35° &nbsp; Caution — Minor misalignment</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff8c00"></div>35°–45° &nbsp; Warning — Sustained risk</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div>&gt;45° &nbsp;&nbsp;&nbsp;&nbsp; Danger — Correct immediately</div>
+      </div>
+    </div>
+
+    <!-- Manual sim sliders (used when WS is not connected) -->
+    <div class="card sim-panel" id="sim-panel">
+      <div class="card-title" style="color:rgba(150,150,150,0.5)">▸ Manual Simulator — active when not connected</div>
+      <div class="sim-row">
+        <label>Pitch</label>
+        <input type="range" id="sim-pitch" min="-60" max="60" value="0" step="0.5">
+        <span class="sim-val" id="sim-pitch-val">0.0°</span>
+      </div>
+      <div class="sim-row">
+        <label>Roll</label>
+        <input type="range" id="sim-roll" min="-60" max="60" value="0" step="0.5">
+        <span class="sim-val" id="sim-roll-val">0.0°</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── CENTER (X-RAY) ── -->
+  <div class="center-panel">
+    <div class="xray-label">Lateral X-Ray View</div>
+
+    <div class="xray-frame">
+      <svg id="spine-svg" viewBox="0 0 200 480" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="bone-glow">
+            <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id="bg-grad" cx="50%" cy="30%">
+            <stop offset="0%"   stop-color="#07253a"/>
+            <stop offset="100%" stop-color="#010a12"/>
+          </radialGradient>
+          <linearGradient id="bone-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stop-color="#5a9fbf"/>
+            <stop offset="40%"  stop-color="#c8e8f8"/>
+            <stop offset="100%" stop-color="#6ab0d4"/>
+          </linearGradient>
+          <linearGradient id="disc-grad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stop-color="#1a4a66"/>
+            <stop offset="50%"  stop-color="#2a6a8a"/>
+            <stop offset="100%" stop-color="#1a4a66"/>
+          </linearGradient>
+        </defs>
+
+        <rect width="200" height="480" fill="url(#bg-grad)"/>
+        <!-- body silhouette -->
+        <ellipse cx="100" cy="80"  rx="55" ry="62" fill="#050f19" opacity="0.5"/>
+        <rect x="48" y="80" width="104" height="330" rx="40" fill="#050f19" opacity="0.4"/>
+        <ellipse cx="100" cy="410" rx="52" ry="55" fill="#050f19" opacity="0.45"/>
+
+        <g id="spine-group" transform-origin="100 240">
+
+          <!-- CERVICAL C1–C7 -->
+          <g id="vert-c1"><rect x="76" y="58" width="48" height="14" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.92"/><rect x="72" y="60" width="8" height="10" rx="1.5" fill="#8ec8e8" opacity="0.7"/><rect x="120" y="60" width="8" height="10" rx="1.5" fill="#8ec8e8" opacity="0.7"/><text x="100" y="68.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">C1</text></g>
+          <rect x="80" y="72" width="40" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.9"/>
+          <g id="vert-c2"><rect x="76" y="77" width="48" height="14" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.9"/><rect x="70" y="79" width="9" height="10" rx="1.5" fill="#8ec8e8" opacity="0.65"/><rect x="121" y="79" width="9" height="10" rx="1.5" fill="#8ec8e8" opacity="0.65"/><text x="100" y="87.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">C2</text></g>
+          <rect x="80" y="91" width="40" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.85"/>
+          <g id="vert-c3"><rect x="77" y="96" width="46" height="14" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.88"/><rect x="70" y="98" width="10" height="10" rx="1.5" fill="#8ec8e8" opacity="0.6"/><rect x="120" y="98" width="10" height="10" rx="1.5" fill="#8ec8e8" opacity="0.6"/><text x="100" y="106.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">C3</text></g>
+          <rect x="80" y="110" width="40" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.82"/>
+          <g id="vert-c4"><rect x="77" y="115" width="46" height="14" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.87"/><rect x="69" y="117" width="11" height="10" rx="1.5" fill="#8ec8e8" opacity="0.6"/><rect x="120" y="117" width="11" height="10" rx="1.5" fill="#8ec8e8" opacity="0.6"/><text x="100" y="125.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">C4</text></g>
+          <rect x="80" y="129" width="40" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.8"/>
+          <g id="vert-c5"><rect x="77" y="134" width="46" height="14" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.86"/><rect x="68" y="136" width="12" height="10" rx="1.5" fill="#8ec8e8" opacity="0.6"/><rect x="120" y="136" width="12" height="10" rx="1.5" fill="#8ec8e8" opacity="0.6"/><text x="100" y="144.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">C5</text></g>
+          <rect x="79" y="148" width="42" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.8"/>
+          <g id="vert-c6"><rect x="76" y="153" width="48" height="14" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.85"/><rect x="67" y="155" width="12" height="10" rx="1.5" fill="#8ec8e8" opacity="0.58"/><rect x="121" y="155" width="12" height="10" rx="1.5" fill="#8ec8e8" opacity="0.58"/><text x="100" y="163.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">C6</text></g>
+          <rect x="78" y="167" width="44" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.78"/>
+          <g id="vert-c7"><rect x="75" y="172" width="50" height="14" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.84"/><rect x="65" y="174" width="13" height="10" rx="1.5" fill="#8ec8e8" opacity="0.58"/><rect x="122" y="174" width="13" height="10" rx="1.5" fill="#8ec8e8" opacity="0.58"/><text x="100" y="182.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">C7</text></g>
+
+          <!-- THORACIC T1–T7 -->
+          <rect x="77" y="186" width="46" height="6" rx="1.5" fill="url(#disc-grad)" opacity="0.78"/>
+          <g id="vert-t1"><rect x="73" y="192" width="54" height="15" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.83"/><rect x="60" y="194" width="14" height="11" rx="1.5" fill="#8ec8e8" opacity="0.55"/><rect x="126" y="194" width="14" height="11" rx="1.5" fill="#8ec8e8" opacity="0.55"/><text x="100" y="202" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">T1</text></g>
+          <rect x="77" y="207" width="46" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.76"/>
+          <g id="vert-t2"><rect x="72" y="212" width="56" height="15" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.82"/><rect x="58" y="214" width="15" height="11" rx="1.5" fill="#8ec8e8" opacity="0.53"/><rect x="127" y="214" width="15" height="11" rx="1.5" fill="#8ec8e8" opacity="0.53"/><text x="100" y="222" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">T2</text></g>
+          <rect x="77" y="227" width="46" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.74"/>
+          <g id="vert-t3"><rect x="71" y="232" width="58" height="15" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.81"/><rect x="57" y="234" width="15" height="11" rx="1.5" fill="#8ec8e8" opacity="0.52"/><rect x="128" y="234" width="15" height="11" rx="1.5" fill="#8ec8e8" opacity="0.52"/><text x="100" y="242" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">T3</text></g>
+          <rect x="77" y="247" width="46" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.72"/>
+          <g id="vert-t4"><rect x="70" y="252" width="60" height="15" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.80"/><rect x="55" y="254" width="16" height="11" rx="1.5" fill="#8ec8e8" opacity="0.5"/><rect x="129" y="254" width="16" height="11" rx="1.5" fill="#8ec8e8" opacity="0.5"/><text x="100" y="262" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">T4</text></g>
+          <rect x="77" y="267" width="46" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.70"/>
+          <g id="vert-t5"><rect x="70" y="272" width="60" height="15" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.79"/><rect x="54" y="274" width="16" height="11" rx="1.5" fill="#8ec8e8" opacity="0.5"/><rect x="130" y="274" width="16" height="11" rx="1.5" fill="#8ec8e8" opacity="0.5"/><text x="100" y="282" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">T5</text></g>
+          <rect x="77" y="287" width="46" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.68"/>
+          <g id="vert-t6"><rect x="70" y="292" width="60" height="15" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.78"/><text x="100" y="302" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">T6</text></g>
+          <rect x="77" y="307" width="46" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.67"/>
+          <g id="vert-t7"><rect x="70" y="312" width="60" height="15" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.77"/><text x="100" y="322" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5" fill="#03111c" opacity="0.8">T7</text></g>
+          <rect x="77" y="327" width="46" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.66"/>
+
+          <!-- LUMBAR L1–L5 -->
+          <g id="vert-l1"><rect x="68" y="332" width="64" height="17" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.85"/><rect x="50" y="334" width="18" height="13" rx="2" fill="#8ec8e8" opacity="0.5"/><rect x="132" y="334" width="18" height="13" rx="2" fill="#8ec8e8" opacity="0.5"/><text x="100" y="343" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5.5" fill="#03111c" opacity="0.85">L1</text></g>
+          <rect x="75" y="349" width="50" height="6" rx="2" fill="url(#disc-grad)" opacity="0.78"/>
+          <g id="vert-l2"><rect x="67" y="355" width="66" height="18" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.86"/><rect x="48" y="357" width="19" height="14" rx="2" fill="#8ec8e8" opacity="0.5"/><rect x="133" y="357" width="19" height="14" rx="2" fill="#8ec8e8" opacity="0.5"/><text x="100" y="366.5" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5.5" fill="#03111c" opacity="0.85">L2</text></g>
+          <rect x="75" y="373" width="50" height="7" rx="2" fill="url(#disc-grad)" opacity="0.8"/>
+          <g id="vert-l3"><rect x="66" y="380" width="68" height="19" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.87"/><rect x="46" y="382" width="20" height="15" rx="2" fill="#8ec8e8" opacity="0.52"/><rect x="134" y="382" width="20" height="15" rx="2" fill="#8ec8e8" opacity="0.52"/><text x="100" y="392" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5.5" fill="#03111c" opacity="0.85">L3</text></g>
+          <rect x="74" y="399" width="52" height="7" rx="2" fill="url(#disc-grad)" opacity="0.82"/>
+          <g id="vert-l4"><rect x="65" y="406" width="70" height="19" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.88"/><rect x="44" y="408" width="22" height="15" rx="2" fill="#8ec8e8" opacity="0.53"/><rect x="134" y="408" width="22" height="15" rx="2" fill="#8ec8e8" opacity="0.53"/><text x="100" y="418" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5.5" fill="#03111c" opacity="0.85">L4</text></g>
+          <rect x="73" y="425" width="54" height="7" rx="2" fill="url(#disc-grad)" opacity="0.83"/>
+          <g id="vert-l5"><rect x="64" y="432" width="72" height="19" rx="3" fill="url(#bone-grad)" filter="url(#bone-glow)" opacity="0.89"/><rect x="42" y="434" width="23" height="15" rx="2" fill="#8ec8e8" opacity="0.55"/><rect x="135" y="434" width="23" height="15" rx="2" fill="#8ec8e8" opacity="0.55"/><text x="100" y="444" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5.5" fill="#03111c" opacity="0.85">L5</text></g>
+
+          <!-- SACRUM -->
+          <rect x="73" y="451" width="54" height="5" rx="1.5" fill="url(#disc-grad)" opacity="0.7"/>
+          <rect x="60" y="456" width="80" height="22" rx="5" fill="#7ab8d8" filter="url(#bone-glow)" opacity="0.7"/>
+          <text x="100" y="470" text-anchor="middle" font-family="'Share Tech Mono'" font-size="5.5" fill="#03111c" opacity="0.85">SACRUM</text>
+
+          <!-- alignment guide -->
+          <line x1="100" y1="55" x2="100" y2="478" stroke="rgba(27,200,245,0.12)" stroke-width="0.8" stroke-dasharray="4,4"/>
+        </g>
+
+        <!-- grain -->
+        <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="4" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
+        <rect width="200" height="480" fill="rgba(0,0,0,0)" filter="url(#grain)" opacity="0.06"/>
+        <circle cx="8"   cy="8"   r="3" fill="none" stroke="rgba(200,232,248,0.15)" stroke-width="1"/>
+        <circle cx="192" cy="8"   r="3" fill="none" stroke="rgba(200,232,248,0.15)" stroke-width="1"/>
+        <circle cx="8"   cy="472" r="3" fill="none" stroke="rgba(200,232,248,0.15)" stroke-width="1"/>
+        <circle cx="192" cy="472" r="3" fill="none" stroke="rgba(200,232,248,0.15)" stroke-width="1"/>
+      </svg>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <div><div class="status-label">Total Bend</div><div class="status-value" id="total-display">0.0°</div></div>
+      <div><div class="status-label">Pitch</div><div class="status-value" id="pitch-display" style="color:var(--accent)">0.0°</div></div>
+      <div><div class="status-label">Roll</div><div class="status-value" id="roll-display" style="color:var(--accent)">0.0°</div></div>
+      <div><div class="status-label">Status</div><div class="status-value" id="status-display" style="color:var(--ok)">OK</div></div>
+    </div>
+
+    <!-- Region labels -->
+    <div style="display:flex;justify-content:space-between;width:100%;max-width:340px;margin-top:10px;">
+      <span style="font-family:var(--font-mono);font-size:0.5rem;color:var(--text-dim)">CERVICAL C1–C7</span>
+      <span style="font-family:var(--font-mono);font-size:0.5rem;color:var(--text-dim)">THORACIC T1–T7</span>
+      <span style="font-family:var(--font-mono);font-size:0.5rem;color:var(--text-dim)">LUMBAR L1–L5</span>
+    </div>
+  </div>
+
+  <!-- ── RIGHT PANEL ── -->
+  <div class="right-panel">
+
+    <!-- WebSocket connection panel -->
+    <div class="card ws-panel">
+      <div class="card-title" style="color:rgba(27,200,245,0.6)">▸ ESP32 WebSocket Connection</div>
+
+      <div class="ws-row">
+        <label>Bridge IP</label>
+        <input class="ws-input" id="ws-ip"   type="text"   value="192.168.1.100" placeholder="192.168.x.x" style="flex:2"/>
+        <label style="width:32px;text-align:center">Port</label>
+        <input class="ws-input" id="ws-port" type="number" value="8765" style="width:68px;flex:none"/>
+      </div>
+
+      <div class="ws-row">
+        <button class="ws-btn connect" id="ws-btn" onclick="wsToggle()">Connect</button>
+        <span style="font-family:var(--font-mono);font-size:0.62rem;color:var(--text-dim);flex:1;padding-left:10px;" id="ws-status-text">Not connected — run bridge.py first</span>
+      </div>
+
+      <div class="ws-log" id="ws-log">
+        <div>[ SpineGuard WebSocket log ]</div>
+      </div>
+
+      <!-- bridge.py quick reference -->
+      <div style="margin-top:12px;background:#020e18;border:1px solid var(--border);border-radius:3px;padding:10px;font-family:var(--font-mono);font-size:0.58rem;color:var(--text-dim);line-height:1.8;">
+        <div style="color:var(--accent);margin-bottom:4px;"># Install once:</div>
+        <div>pip install pyserial websockets</div>
+        <div style="color:var(--accent);margin-top:6px;margin-bottom:4px;"># Run bridge.py on your PC:</div>
+        <div>python bridge.py</div>
+        <div style="color:var(--accent);margin-top:6px;margin-bottom:4px;"># ESP32 serial format:</div>
+        <div style="color:var(--bone);">BEND:12.5,-3.2</div>
+      </div>
+    </div>
+
+    <!-- History chart -->
+    <div class="card">
+      <div class="card-title">▸ Bend History — last 60 s</div>
+      <canvas id="history-canvas" width="400" height="90"></canvas>
+    </div>
+
+    <!-- Anatomy guide -->
+    <div class="card">
+      <div class="card-title">▸ Spinal Anatomy Guide</div>
+      <div style="font-size:0.67rem;color:var(--text);line-height:1.75;font-family:var(--font-mono);">
+        <p style="margin-bottom:8px;"><span style="color:var(--bone)">CERVICAL (C1–C7):</span> Neck region. Supports the skull. Most mobile section. Vulnerable to flexion injury. Safe ROM ±45°.</p>
+        <p style="margin-bottom:8px;"><span style="color:var(--bone)">THORACIC (T1–T12):</span> Mid-back, articulates with ribs. Kyphotic curve. More rigid. Safe ROM ±35°.</p>
+        <p style="margin-bottom:8px;"><span style="color:var(--bone)">LUMBAR (L1–L5):</span> Lower back, bears greatest load. Lordotic curve. Most common disc herniation site. Safe ROM ±25°.</p>
+        <p><span style="color:var(--bone)">SACRUM:</span> Fused vertebrae connecting spine to pelvis. Weight distribution base.</p>
+      </div>
+    </div>
+
+    <!-- Posture tips -->
+    <div class="card">
+      <div class="card-title">▸ Posture Tips</div>
+      <div style="font-size:0.65rem;color:var(--text-dim);font-family:var(--font-mono);line-height:1.9;">
+        <div style="color:var(--ok);">✓ Ears aligned over shoulders over hips</div>
+        <div style="color:var(--ok);">✓ Screen at eye level, arm's length away</div>
+        <div style="color:var(--ok);">✓ Feet flat, knees at 90° when seated</div>
+        <div style="color:var(--warn);">⚠ Forward head = +2.5 kg load per 2.5 cm</div>
+        <div style="color:var(--warn);">⚠ Posture break every 30 minutes</div>
+        <div style="color:var(--danger);">✗ No sustained bend &gt;20° for &gt;10 min</div>
+        <div style="color:var(--danger);">✗ Asymmetric loading damages discs over time</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <span>SpineGuard IoT v2.0 &nbsp;|&nbsp; MPU6050 + ESP32</span>
+  <span id="footer-status">System initialised — awaiting connection</span>
+  <span>WS bridge port 8765 &nbsp;|&nbsp; LAN Dashboard</span>
+</footer>
+
+<!-- ════════════════════ JAVASCRIPT ════════════════════ -->
+<script>
+// ── State ──────────────────────────────────────────────────
+let history      = [];
+const MAX_HIST   = 60;
+let maxBend      = 0;
+let sumBend      = 0;
+let sampleN      = 0;
+let warnCount    = 0;
+let sessionStart = Date.now();
+let wsConnected  = false;
+let ws           = null;
+let reconnectTimer = null;
+
+// ── Clock ──────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toTimeString().slice(0,8);
+  const e = Math.floor((Date.now() - sessionStart) / 1000);
+  document.getElementById('session-time').textContent =
+    String(Math.floor(e/60)).padStart(2,'0') + ':' + String(e%60).padStart(2,'0');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Colour helper ──────────────────────────────────────────
+function bendColor(deg) {
+  if (deg > 45) return '#ff3c3c';
+  if (deg > 35) return '#ff8c00';
+  if (deg > 20) return '#f5c518';
+  return '#00e5a0';
+}
+
+// ── WebSocket log ──────────────────────────────────────────
+function wsLog(msg) {
+  const log = document.getElementById('ws-log');
+  const now = new Date().toTimeString().slice(0,8);
+  log.innerHTML += `<div style="color:var(--text-dim)">[${now}] ${msg}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── Connection state UI ────────────────────────────────────
+function setConnState(state) {
+  const dot    = document.getElementById('conn-dot');
+  const text   = document.getElementById('conn-text');
+  const badge  = document.getElementById('conn-badge');
+  const btn    = document.getElementById('ws-btn');
+  const stText = document.getElementById('ws-status-text');
+  const sim    = document.getElementById('sim-panel');
+  const footer = document.getElementById('footer-status');
+
+  dot.className = 'live-dot ' + state;
+
+  if (state === 'connected') {
+    text.textContent   = 'ESP32 Live';
+    badge.style.color  = 'var(--ok)';
+    btn.className      = 'ws-btn disconnect';
+    btn.textContent    = 'Disconnect';
+    stText.textContent = 'Connected — receiving IMU data';
+    stText.style.color = 'var(--ok)';
+    sim.style.opacity  = '0.3';
+    sim.style.pointerEvents = 'none';
+    footer.textContent = 'ESP32 connected — live monitoring active';
+    wsConnected = true;
+  } else if (state === 'connecting') {
+    text.textContent   = 'Connecting…';
+    badge.style.color  = 'var(--warn)';
+    btn.className      = 'ws-btn disconnect';
+    btn.textContent    = 'Cancel';
+    stText.textContent = 'Connecting to bridge…';
+    stText.style.color = 'var(--warn)';
+    wsConnected = false;
+  } else {
+    text.textContent   = 'Disconnected';
+    badge.style.color  = 'var(--danger)';
+    btn.className      = 'ws-btn connect';
+    btn.textContent    = 'Connect';
+    stText.textContent = 'Not connected — run bridge.py first';
+    stText.style.color = 'var(--text-dim)';
+    sim.style.opacity  = '1';
+    sim.style.pointerEvents = 'auto';
+    footer.textContent = 'Disconnected — using manual simulator';
+    wsConnected = false;
+  }
+}
+
+// ── WebSocket logic ────────────────────────────────────────
+function wsConnect() {
+  const ip   = document.getElementById('ws-ip').value.trim();
+  const port = document.getElementById('ws-port').value.trim();
+  const url  = `ws://${ip}:${port}`;
+
+  wsLog(`Connecting to ${url}…`);
+  setConnState('connecting');
+
+  try {
+    ws = new WebSocket(url);
+  } catch(e) {
+    wsLog(`Error: ${e.message}`);
+    setConnState('disconnected');
+    return;
+  }
+
+  ws.onopen = () => {
+    wsLog('Connected! Waiting for ESP32 data…');
+    setConnState('connected');
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
+
+  ws.onmessage = (e) => {
+    const raw = e.data.trim();
+    if (raw.startsWith('BEND:')) {
+      const parts = raw.replace('BEND:', '').split(',');
+      if (parts.length === 2) {
+        const p = parseFloat(parts[0]);
+        const r = parseFloat(parts[1]);
+        if (!isNaN(p) && !isNaN(r)) {
+          // sync sliders too (visual only)
+          document.getElementById('sim-pitch').value = p;
+          document.getElementById('sim-roll').value  = r;
+          document.getElementById('sim-pitch-val').textContent = (p>=0?'+':'') + p.toFixed(1) + '°';
+          document.getElementById('sim-roll-val').textContent  = (r>=0?'+':'') + r.toFixed(1) + '°';
+          update(p, r);
+        }
+      }
+    }
+  };
+
+  ws.onerror = () => {
+    wsLog('Connection error — check IP, port, and that bridge.py is running.');
+  };
+
+  ws.onclose = () => {
+    wsLog('Connection closed.');
+    setConnState('disconnected');
+    ws = null;
+  };
+}
+
+function wsDisconnect() {
+  if (ws) { ws.close(); ws = null; }
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  setConnState('disconnected');
+  wsLog('Disconnected manually.');
+}
+
+function wsToggle() {
+  if (wsConnected || (ws && ws.readyState <= 1)) wsDisconnect();
+  else wsConnect();
+}
+
+// ── Main update function ───────────────────────────────────
+function update(pitch, roll) {
+  const total = Math.sqrt(pitch*pitch + roll*roll);
+
+  sampleN++;
+  sumBend += total;
+  if (total > maxBend) maxBend = total;
+  document.getElementById('max-bend').textContent = maxBend.toFixed(1) + '°';
+  document.getElementById('avg-bend').textContent = (sumBend/sampleN).toFixed(1) + '°';
+
+  if (total > 20) {
+    warnCount++;
+    document.getElementById('warn-count').textContent = warnCount;
+  }
+
+  history.push(total);
+  if (history.length > MAX_HIST) history.shift();
+
+  const col  = bendColor(total);
+  const pAbs = Math.abs(pitch);
+  const rAbs = Math.abs(roll);
+
+  // Meters
+  document.getElementById('pitch-num').textContent = (pitch>=0?'+':'') + pitch.toFixed(1) + '°';
+  document.getElementById('roll-num').textContent  = (roll>=0?'+':'')  + roll.toFixed(1)  + '°';
+  document.getElementById('total-num').textContent = total.toFixed(1) + '°';
+  document.getElementById('pitch-bar').style.cssText = `width:${Math.min(pAbs/60*100,100)}%;background:${bendColor(pAbs)}`;
+  document.getElementById('roll-bar').style.cssText  = `width:${Math.min(rAbs/60*100,100)}%;background:${bendColor(rAbs)}`;
+  document.getElementById('total-bar').style.cssText = `width:${Math.min(total/60*100,100)}%;background:${col}`;
+
+  // Status bar
+  document.getElementById('total-display').textContent = total.toFixed(1) + '°';
+  document.getElementById('total-display').style.color = col;
+  document.getElementById('pitch-display').textContent = (pitch>=0?'+':'') + pitch.toFixed(1) + '°';
+  document.getElementById('roll-display').textContent  = (roll>=0?'+':'')  + roll.toFixed(1)  + '°';
+
+  let st, sc;
+  if      (total>45){st='DANGER'; sc='#ff3c3c';}
+  else if (total>35){st='WARN+';  sc='#ff8c00';}
+  else if (total>20){st='WARN';   sc='#f5c518';}
+  else              {st='OK';     sc='#00e5a0';}
+  document.getElementById('status-display').textContent = st;
+  document.getElementById('status-display').style.color = sc;
+
+  // Alert box
+  const ab = document.getElementById('alert-box');
+  const ai = document.getElementById('alert-icon');
+  const at = document.getElementById('alert-title');
+  const ad = document.getElementById('alert-desc');
+  if (total > 45) {
+    ab.style.cssText = 'border-radius:4px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all 0.4s;border-left:3px solid #ff3c3c;background:rgba(255,60,60,0.08)';
+    ai.textContent = '🚨'; at.style.color = '#ff3c3c';
+    at.textContent = 'DANGER — Correct Immediately';
+    ad.textContent = `Total bend ${total.toFixed(1)}° exceeds safe limit. Risk of disc injury.`;
+  } else if (total > 35) {
+    ab.style.cssText = 'border-radius:4px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all 0.4s;border-left:3px solid #ff8c00;background:rgba(255,140,0,0.07)';
+    ai.textContent = '⚠️'; at.style.color = '#ff8c00';
+    at.textContent = 'High Warning — Reduce Bend';
+    ad.textContent = `Total bend ${total.toFixed(1)}°. Extended exposure risks musculoskeletal strain.`;
+  } else if (total > 20) {
+    ab.style.cssText = 'border-radius:4px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all 0.4s;border-left:3px solid #f5c518;background:rgba(245,197,24,0.06)';
+    ai.textContent = '⚠️'; at.style.color = '#f5c518';
+    at.textContent = 'Warning — Minor Misalignment';
+    ad.textContent = `Total bend ${total.toFixed(1)}°. Adjust posture. Avoid sustaining this position.`;
+  } else {
+    ab.style.cssText = 'border-radius:4px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all 0.4s;border-left:3px solid #00e5a0;background:rgba(0,229,160,0.05)';
+    ai.textContent = '✅'; at.style.color = '#00e5a0';
+    at.textContent = 'Posture Normal';
+    ad.textContent = `Total bend ${total.toFixed(1)}°. Spinal alignment within safe range.`;
+  }
+
+  // Spine SVG transform
+  const visPitch = Math.max(-35, Math.min(35, pitch));
+  const visRoll  = Math.max(-35, Math.min(35, roll));
+  document.getElementById('spine-group').setAttribute('transform',
+    `rotate(${visRoll} 100 240) skewX(${visPitch * 0.3})`);
+
+  // Bone tint
+  document.querySelectorAll('#spine-svg rect[fill="url(#bone-grad)"]').forEach(el => {
+    el.style.filter = total > 45 ? 'hue-rotate(180deg) brightness(1.2)' :
+                      total > 20 ? 'hue-rotate(30deg)' : '';
+  });
+
+  drawHistory();
+}
+
+// ── History canvas ─────────────────────────────────────────
+function drawHistory() {
+  const canvas = document.getElementById('history-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#020e18'; ctx.fillRect(0, 0, W, H);
+
+  [20,35,45].forEach(deg => {
+    const y = H - (deg/60)*H;
+    ctx.strokeStyle = deg===45?'rgba(255,60,60,0.3)':deg===35?'rgba(255,140,0,0.25)':'rgba(245,197,24,0.2)';
+    ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.font = '8px Share Tech Mono';
+    ctx.fillText(deg+'°', 4, y-2);
+  });
+
+  if (history.length < 2) return;
+
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,   'rgba(27,200,245,0.4)');
+  grad.addColorStop(0.5, 'rgba(27,200,245,0.1)');
+  grad.addColorStop(1,   'rgba(27,200,245,0)');
+
+  ctx.beginPath();
+  history.forEach((v,i) => {
+    const x = (i/(MAX_HIST-1))*W;
+    const y = H-(Math.min(v,60)/60)*H;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.lineTo(((history.length-1)/(MAX_HIST-1))*W, H);
+  ctx.lineTo(0, H); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+
+  ctx.beginPath();
+  history.forEach((v,i) => {
+    const x = (i/(MAX_HIST-1))*W;
+    const y = H-(Math.min(v,60)/60)*H;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = bendColor(history[history.length-1]);
+  ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+// ── Manual simulator sliders ───────────────────────────────
+const simPitch = document.getElementById('sim-pitch');
+const simRoll  = document.getElementById('sim-roll');
+const simPVal  = document.getElementById('sim-pitch-val');
+const simRVal  = document.getElementById('sim-roll-val');
+
+function onSlider() {
+  if (wsConnected) return;
+  const p = parseFloat(simPitch.value);
+  const r = parseFloat(simRoll.value);
+  simPVal.textContent = (p>=0?'+':'') + p.toFixed(1) + '°';
+  simRVal.textContent = (r>=0?'+':'') + r.toFixed(1) + '°';
+  update(p, r);
+}
+simPitch.addEventListener('input', onSlider);
+simRoll.addEventListener('input',  onSlider);
+
+// ── Init ───────────────────────────────────────────────────
+setConnState('disconnected');
+update(0, 0);
+drawHistory();
+</script>
+</body>
+</html>
